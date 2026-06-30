@@ -3473,4 +3473,100 @@ describe("oauth2", async () => {
 			expect(callbackURL).toBe("http://localhost:3000/dashboard");
 		});
 	});
+
+	/**
+	 * @see https://github.com/better-auth/better-auth/issues/8741
+	 */
+	describe("authorizationUrlParams", () => {
+		it("should include static authorizationUrlParams in the authorization URL", async () => {
+			const { customFetchImpl, cookieSetter } = await getTestInstance({
+				plugins: [
+					genericOAuth({
+						config: [
+							{
+								providerId: "test-static-params",
+								discoveryUrl: `http://localhost:${port}/.well-known/openid-configuration`,
+								clientId,
+								clientSecret,
+								pkce: true,
+								authorizationUrlParams: {
+									resource: "my-resource",
+									custom_param: "custom-value",
+								},
+							},
+						],
+					}),
+				],
+			});
+
+			const authClient = createAuthClient({
+				plugins: [genericOAuthClient()],
+				baseURL: "http://localhost:3000",
+				fetchOptions: {
+					customFetchImpl,
+				},
+			});
+
+			const headers = new Headers();
+			const res = await authClient.signIn.oauth2({
+				providerId: "test-static-params",
+				callbackURL: "http://localhost:3000/dashboard",
+				fetchOptions: {
+					onSuccess: cookieSetter(headers),
+				},
+			});
+
+			expect(res.data?.url).toBeDefined();
+			const url = new URL(res.data!.url);
+			expect(url.searchParams.get("resource")).toBe("my-resource");
+			expect(url.searchParams.get("custom_param")).toBe("custom-value");
+		});
+
+		it("should include async authorizationUrlParams in the authorization URL", async () => {
+			const { customFetchImpl, cookieSetter } = await getTestInstance({
+				plugins: [
+					genericOAuth({
+						config: [
+							{
+								providerId: "test-async-params",
+								discoveryUrl: `http://localhost:${port}/.well-known/openid-configuration`,
+								clientId,
+								clientSecret,
+								pkce: true,
+								authorizationUrlParams: async (_ctx) => {
+									// Simulate an async lookup (e.g. database query)
+									return {
+										resource: "async-resource",
+										audience: "async-audience",
+									};
+								},
+							},
+						],
+					}),
+				],
+			});
+
+			const authClient = createAuthClient({
+				plugins: [genericOAuthClient()],
+				baseURL: "http://localhost:3000",
+				fetchOptions: {
+					customFetchImpl,
+				},
+			});
+
+			const headers = new Headers();
+			const res = await authClient.signIn.oauth2({
+				providerId: "test-async-params",
+				callbackURL: "http://localhost:3000/dashboard",
+				fetchOptions: {
+					onSuccess: cookieSetter(headers),
+				},
+			});
+
+			expect(res.data?.url).toBeDefined();
+			const url = new URL(res.data!.url);
+			expect(url.searchParams.get("resource")).toBe("async-resource");
+			expect(url.searchParams.get("audience")).toBe("async-audience");
+		});
+	});
 });
